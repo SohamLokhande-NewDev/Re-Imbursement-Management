@@ -61,3 +61,72 @@ async def update_user_role(
     supabase.table("users").update({"role": body.new_role}).eq("id", target_user_id).execute()
 
     return {"status": "success", "message": f"User role updated to {body.new_role}"}
+
+
+class CreateUser(BaseModel):
+    email: str
+    password: str
+    first_name: str
+    last_name: str
+    role: str = "Employee"
+
+
+class ManagerAssign(BaseModel):
+    manager_id: str
+
+
+@router.post("/")
+async def create_user(body: CreateUser, user: dict = Depends(get_current_user)):
+    """Allow an Admin to directly create a new user in their company."""
+    if user["role"] != "Admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    if body.role not in VALID_ROLES:
+        raise HTTPException(status_code=400, detail=f"Invalid role: {body.role}")
+
+    # Create Supabase auth account
+    auth_resp = supabase.auth.admin.create_user({
+        "email": body.email,
+        "password": body.password,
+        "email_confirm": True,
+    })
+
+    if not auth_resp.user:
+        raise HTTPException(status_code=400, detail="Failed to create auth account")
+
+    new_user = supabase.table("users").insert({
+        "id": auth_resp.user.id,
+        "company_id": user["company_id"],
+        "email": body.email,
+        "first_name": body.first_name,
+        "last_name": body.last_name,
+        "role": body.role,
+    }).execute()
+
+    return {"status": "success", "message": f"{body.role} created", "data": new_user.data[0]}
+
+
+@router.patch("/{target_user_id}/assign-manager")
+async def assign_manager(
+    target_user_id: str,
+    body: ManagerAssign,
+    user: dict = Depends(get_current_user)
+):
+    """Allow an Admin to set a user's direct manager."""
+    if user["role"] != "Admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+
+    # Security: both users must be in the same company
+    target = supabase.table("users").select("id, company_id").eq("id", target_user_id).execute()
+    if not target.data or target.data[0]["company_id"] != user["company_id"]:
+        raise HTTPException(status_code=404, detail="User not found in your company")
+
+    manager = supabase.table("users").select("id, company_id, role").eq("id", body.manager_id).execute()
+    if not manager.data or manager.data[0]["company_id"] != user["company_id"]:
+        raise HTTPException(status_code=404, detail="Manager not found in your company")
+    if manager.data[0]["role"] not in ("Manager", "Admin"):
+        raise HTTPException(status_code=400, detail="Target manager must have role Manager or Admin")
+
+    supabase.table("users").update({"manager_id": body.manager_id}).eq("id", target_user_id).execute()
+
+    return {"status": "success", "message": "Manager assigned successfully"}

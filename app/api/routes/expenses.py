@@ -62,3 +62,26 @@ async def create_expense(expense: ExpenseCreate, user: dict = Depends(get_curren
         return {"status": "success", "data": response.data[0]}
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+
+@router.get("/history")
+async def expense_history(user: dict = Depends(get_current_user_details)):
+    """
+    Return expense history:
+    - Admins see all company expenses.
+    - Managers / Employees see only their own.
+    """
+    try:
+        query = supabase.table("expenses") \
+            .select("*, users:employee_id(first_name, last_name, email)") \
+            .order("created_at", desc=True)
+
+        if user["role"] == "Admin":
+            query = query.eq("company_id", user["company_id"])
+        else:
+            query = query.eq("employee_id", user["id"])
+
+        result = query.execute()
+        return {"status": "success", "data": result.data}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
