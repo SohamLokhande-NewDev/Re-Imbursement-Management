@@ -1,7 +1,11 @@
 import sys
 import psycopg2
 
-DATABASE_URL = "postgresql://postgres.jyopodrizwbsccalocse:skwua2xQq5cH2KCn@aws-1-ap-northeast-1.pooler.supabase.com:5432/postgres"
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+DATABASE_URL = os.getenv("DATABASE_URL")
 
 def create_user(email, password, full_name, company_name):
     conn = psycopg2.connect(DATABASE_URL)
