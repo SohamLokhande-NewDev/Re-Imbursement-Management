@@ -2,227 +2,268 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
+/* ─── Stitch "Structure Ledger" tokens ─── */
+const T = {
+  bg:       '#f8f9fb',
+  surface:  '#ffffff',
+  surfLow:  '#f3f4f6',
+  surfHigh: '#e7e8ea',
+  primary:  '#003d9b',
+  primaryC: '#0052cc',
+  onPrim:   '#ffffff',
+  textMain: '#191c1e',
+  textSub:  '#434654',
+  outline:  '#c3c6d6',
+  error:    '#ba1a1a',
+  errCont:  '#ffdad6',
+  onErr:    '#93000a',
+  ambShadow:'0 12px 32px rgba(0,24,72,0.06)',
+};
+
+const STATUS_CHIP = {
+  Pending:  { bg: '#ffdbcf', color: '#812800' },
+  Approved: { bg: '#b6c8fe', color: '#344573' },
+  Rejected: { bg: T.errCont, color: T.onErr    },
+};
+
 const api = axios.create({ baseURL: 'http://localhost:8000' });
 const authH = () => ({ Authorization: `Bearer ${localStorage.getItem('session_token')}` });
 
-const STATUS_COLORS = {
-    Pending:  { bg: '#fff8e1', color: '#f57f17' },
-    Approved: { bg: '#e8f5e9', color: '#2e7d32' },
-    Rejected: { bg: '#ffebee', color: '#c62828' },
+const Chip = ({ label, map }) => {
+  const s = map[label] || { bg: T.surfHigh, color: T.textSub };
+  return <span style={{ background: s.bg, color: s.color, padding: '5px 14px', borderRadius: 9999, fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.04em', display: 'inline-block' }}>{label}</span>;
 };
 
-function Toast({ toast }) {
-    if (!toast) return null;
-    return (
-        <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, padding: '14px 22px', borderRadius: 10, fontWeight: 600, backgroundColor: toast.type === 'success' ? '#27ae60' : '#e74c3c', color: '#fff', boxShadow: '0 4px 16px rgba(0,0,0,0.18)' }}>{toast.text}</div>
-    );
-}
+const PrimaryBtn = ({ onClick, children, style = {} }) => (
+  <button onClick={onClick} style={{ background: `linear-gradient(135deg,${T.primary},${T.primaryC})`, color: '#fff', border: 'none', borderRadius: 8, padding: '9px 18px', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer', ...style }}>
+    {children}
+  </button>
+);
 
+const GhostBtn = ({ onClick, children }) => (
+  <button onClick={onClick} style={{ background: 'transparent', color: T.textSub, border: `1px solid ${T.outline}`, borderRadius: 8, padding: '8px 16px', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer' }}>
+    {children}
+  </button>
+);
+
+const Toast = ({ toast }) => toast ? (
+  <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, padding: '14px 22px', borderRadius: 10, fontWeight: 600, background: toast.type === 'success' ? T.primary : T.error, color: '#fff', boxShadow: T.ambShadow }}>
+    {toast.text}
+  </div>
+) : null;
+
+const ThField = ({ children }) => (
+  <th style={{ padding: '11px 20px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: T.textSub, textTransform: 'uppercase', letterSpacing: '0.07em', background: T.surfLow }}>
+    {children}
+  </th>
+);
+
+const Td = ({ children, style = {} }) => (
+  <td style={{ padding: '14px 20px', fontSize: '0.875rem', color: T.textMain, verticalAlign: 'middle', ...style }}>
+    {children}
+  </td>
+);
+
+/* ExpenseModal for Review */
 function ExpenseModal({ expense, onClose, onAction }) {
-    const [comment, setComment] = useState('');
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
+  const [comment, setComment] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
 
-    const handleAction = async (action) => {
-        if (action === 'reject' && !comment.trim()) { setError('Comment required for rejection.'); return; }
-        setLoading(true);
-        try {
-            await api.post(`/api/approvals/${expense.id}/action`, { action, comment }, { headers: authH() });
-            onAction(expense.id, action);
-            onClose();
-        } catch (err) {
-            setError(err.response?.data?.detail || 'Action failed.');
-        } finally { setLoading(false); }
-    };
+  const handleAction = async (action) => {
+    if (action === 'reject' && !comment.trim()) { setError('Comment required for rejection.'); return; }
+    setLoading(true);
+    try {
+      await api.post(`/api/approvals/${expense.id}/action`, { action, comment }, { headers: authH() });
+      onAction(expense.id, action); onClose();
+    } catch (err) { setError(err.response?.data?.detail || 'Failed.'); }
+    finally { setLoading(false); }
+  };
 
-    const emp = expense.users || {};
-    return (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.5)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-            <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: '28px', width: '100%', maxWidth: 520, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 10px 50px rgba(0,0,0,0.2)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 20 }}>
-                    <h3 style={{ margin: 0, color: '#2c3e50' }}>Expense Review</h3>
-                    <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: '#999' }}>✕</button>
-                </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 18 }}>
-                    {[['Employee', `${emp.first_name || ''} ${emp.last_name || ''}`.trim()], ['Merchant', expense.merchant_name], ['Amount', `${expense.currency} ${expense.amount}`], ['Converted', `${expense.company_currency || ''} ${expense.converted_amount || ''}`], ['Category', expense.category], ['Date', expense.expense_date], ['Status', expense.status], ['Step', `Step ${expense.approval_step || 1}`]].map(([l, v]) => (
-                        <div key={l} style={{ backgroundColor: '#f8f9fa', padding: '10px 12px', borderRadius: 8 }}>
-                            <div style={{ fontSize: '0.72rem', color: '#999', marginBottom: 2 }}>{l}</div>
-                            <div style={{ fontWeight: 600, color: '#2c3e50', fontSize: '0.9rem' }}>{v}</div>
-                        </div>
-                    ))}
-                </div>
-                {expense.description && <div style={{ marginBottom: 16, padding: '10px 12px', backgroundColor: '#f8f9fa', borderRadius: 8, fontSize: '0.9rem', color: '#444' }}>{expense.description}</div>}
-                <textarea value={comment} onChange={e => { setComment(e.target.value); setError(''); }} placeholder="Add a comment (required for rejection)..."
-                    style={{ width: '100%', padding: 12, borderRadius: 8, border: '1px solid #ddd', minHeight: 80, boxSizing: 'border-box', fontFamily: 'inherit', marginBottom: 12 }} />
-                {error && <div style={{ color: '#c62828', marginBottom: 10, fontSize: '0.88rem' }}>{error}</div>}
-                <div style={{ display: 'flex', gap: 10 }}>
-                    <button onClick={() => handleAction('approve')} disabled={loading} style={{ flex: 1, padding: '12px', borderRadius: 8, backgroundColor: '#27ae60', color: '#fff', border: 'none', fontWeight: 700, cursor: 'pointer' }}>{loading ? '...' : '✓ Approve'}</button>
-                    <button onClick={() => handleAction('reject')} disabled={loading} style={{ flex: 1, padding: '12px', borderRadius: 8, backgroundColor: '#e74c3c', color: '#fff', border: 'none', fontWeight: 700, cursor: 'pointer' }}>{loading ? '...' : '✕ Reject'}</button>
-                </div>
-            </div>
+  const emp = expense.users || {};
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,61,155,0.15)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+      <div style={{ background: T.surface, borderRadius: 16, padding: '32px', width: 520, maxHeight: '90vh', overflowY: 'auto', boxShadow: '0 24px 64px rgba(0,24,72,0.14)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 24 }}>
+          <h3 style={{ margin: 0, fontWeight: 700, color: T.textMain }}>Review Expense</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: T.textSub }}>✕</button>
         </div>
-    );
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 20 }}>
+          {[['Employee', `${emp.first_name || ''} ${emp.last_name || ''}`.trim()], ['Merchant', expense.merchant_name], ['Amount', `${expense.currency} ${expense.amount}`], ['Converted', `${expense.company_currency||''} ${expense.converted_amount||''}`], ['Category', expense.category], ['Date', expense.expense_date], ['Status', expense.status], ['Step', `Step ${expense.approval_step || 1}`]].map(([l, v]) => (
+            <div key={l} style={{ background: T.surfLow, padding: '10px 14px', borderRadius: 8 }}>
+              <div style={{ fontSize: '0.7rem', color: T.textSub, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 3 }}>{l}</div>
+              <div style={{ fontWeight: 600, color: T.textMain }}>{v}</div>
+            </div>
+          ))}
+        </div>
+        {expense.description && <div style={{ background: T.surfLow, padding: '10px 14px', borderRadius: 8, marginBottom: 16, color: T.textSub, fontSize: '0.875rem' }}>{expense.description}</div>}
+        <textarea value={comment} onChange={e => { setComment(e.target.value); setError(''); }} placeholder="Add a comment (required to reject)..."
+          style={{ width: '100%', padding: 12, borderRadius: 8, border: `1px solid ${T.outline}`, minHeight: 80, boxSizing: 'border-box', fontFamily: 'Inter,sans-serif', marginBottom: 12, fontSize: '0.875rem' }} />
+        {error && <div style={{ color: T.onErr, marginBottom: 10, fontSize: '0.85rem' }}>{error}</div>}
+        <div style={{ display: 'flex', gap: 10 }}>
+          <button onClick={() => handleAction('approve')} disabled={loading} style={{ flex: 1, padding: '12px', borderRadius: 8, background: 'linear-gradient(135deg,#1b6e2e,#2e7d32)', color: '#fff', border: 'none', fontWeight: 700, cursor: 'pointer' }}>{loading ? '…' : '✓ Approve'}</button>
+          <button onClick={() => handleAction('reject')} disabled={loading} style={{ flex: 1, padding: '12px', borderRadius: 8, background: T.error, color: '#fff', border: 'none', fontWeight: 700, cursor: 'pointer' }}>{loading ? '…' : '✕ Reject'}</button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
-const TABS = ['Approvals', 'My Expenses'];
+const TabBar = ({ tabs, active, onChange }) => (
+  <div style={{ display: 'flex', borderBottom: `2px solid ${T.outline}`, padding: '0 24px' }}>
+    {tabs.map(t => (
+      <button key={t} onClick={() => onChange(t)} style={{
+        padding: '14px 28px', border: 'none', cursor: 'pointer', fontWeight: 600, fontFamily: 'Inter,sans-serif',
+        background: 'transparent', fontSize: '0.92rem',
+        color: active === t ? T.primaryC : T.textSub,
+        borderBottom: active === t ? `3px solid ${T.primaryC}` : '3px solid transparent',
+        marginBottom: -2,
+      }}>{t}</button>
+    ))}
+  </div>
+);
 
 export default function ManagerDashboard() {
-    const navigate = useNavigate();
-    const userData = JSON.parse(localStorage.getItem('user_data') || '{}');
+  const navigate = useNavigate();
+  const userData = JSON.parse(localStorage.getItem('user_data') || '{}');
 
-    const [tab, setTab]           = useState('Approvals');
-    const [pending, setPending]   = useState([]);
-    const [history, setHistory]   = useState([]);
-    const [loadingP, setLoadingP] = useState(true);
-    const [loadingH, setLoadingH] = useState(false);
-    const [selected, setSelected] = useState(null);
-    const [toast, setToast]       = useState(null);
+  const [tab, setTab]         = useState('⏳ Team Approvals');
+  const [pending, setPending] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [loadingP, setLP]     = useState(true);
+  const [loadingH, setLH]     = useState(false);
+  const [selected, setSelected] = useState(null);
+  const [toast, setToast]     = useState(null);
 
-    const showToast = (text, type = 'success') => { setToast({ text, type }); setTimeout(() => setToast(null), 3000); };
+  const boom = (text, type = 'success') => { setToast({ text, type }); setTimeout(() => setToast(null), 3000); };
 
-    const fetchPending = useCallback(async () => {
-        setLoadingP(true);
-        try {
-            const r = await api.get('/api/approvals/pending', { headers: authH() });
-            setPending(r.data.data || []);
-        } catch (e) { if (e.response?.status === 401) navigate('/login'); }
-        finally { setLoadingP(false); }
-    }, [navigate]);
+  const fetchPending = useCallback(async () => {
+    setLP(true);
+    try { const r = await api.get('/api/approvals/pending', { headers: authH() }); setPending(r.data.data || []); }
+    catch (e) { if (e.response?.status === 401) navigate('/login'); }
+    finally { setLP(false); }
+  }, [navigate]);
 
-    const fetchHistory = useCallback(async () => {
-        setLoadingH(true);
-        try {
-            const r = await api.get('/api/expenses/history', { headers: authH() });
-            setHistory(r.data.data || []);
-        } catch (_) {}
-        finally { setLoadingH(false); }
-    }, []);
+  const fetchHistory = useCallback(async () => {
+    setLH(true);
+    try { const r = await api.get('/api/expenses/history', { headers: authH() }); setHistory(r.data.data || []); }
+    catch (_) {} finally { setLH(false); }
+  }, []);
 
-    useEffect(() => { fetchPending(); }, [fetchPending]);
-    useEffect(() => { if (tab === 'My Expenses') fetchHistory(); }, [tab, fetchHistory]);
+  useEffect(() => { fetchPending(); }, [fetchPending]);
+  useEffect(() => { if (tab === '📋 My Expense History') fetchHistory(); }, [tab, fetchHistory]);
 
-    const handleAction = (id, action) => {
-        setPending(p => p.filter(e => e.id !== id));
-        showToast(`Expense ${action === 'approve' ? 'approved ✓' : 'rejected'}`);
-    };
+  const handleAction = (id, action) => {
+    setPending(p => p.filter(e => e.id !== id));
+    boom(`Expense ${action === 'approve' ? 'approved ✓' : 'rejected'}`);
+  };
 
-    return (
-        <div style={{ minHeight: '100vh', backgroundColor: '#f0f2f5', fontFamily: 'Inter, sans-serif' }}>
-            <Toast toast={toast} />
-            {selected && <ExpenseModal expense={selected} onClose={() => setSelected(null)} onAction={handleAction} />}
+  return (
+    <div style={{ minHeight: '100vh', background: T.bg, fontFamily: 'Inter, sans-serif', color: T.textMain }}>
+      <Toast toast={toast} />
+      {selected && <ExpenseModal expense={selected} onClose={() => setSelected(null)} onAction={handleAction} />}
 
-            <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 2rem', backgroundColor: '#fff', boxShadow: '0 2px 10px rgba(0,0,0,0.07)', position: 'sticky', top: 0, zIndex: 100 }}>
-                <div>
-                    <h2 style={{ margin: 0, color: '#2c3e50', fontSize: '1.35rem' }}>👔 Manager Dashboard</h2>
-                    <span style={{ fontSize: '0.78rem', color: '#aaa' }}>{userData.first_name} {userData.last_name}</span>
-                </div>
-                <div style={{ display: 'flex', gap: 10 }}>
-                    <button onClick={() => navigate('/submit-expense')} style={{ padding: '8px 16px', borderRadius: 8, backgroundColor: '#27ae60', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>+ Submit My Expense</button>
-                    <button onClick={() => { localStorage.clear(); navigate('/login'); }} style={{ padding: '8px 16px', borderRadius: 8, backgroundColor: '#e74c3c', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Logout</button>
-                </div>
-            </nav>
-
-            <div style={{ padding: '2rem', maxWidth: '1100px', margin: '0 auto' }}>
-
-                {/* Tabs */}
-                <div style={{ display: 'flex', gap: 0, marginBottom: 0, borderBottom: '2px solid #eee' }}>
-                    {TABS.map(t => (
-                        <button key={t} onClick={() => setTab(t)} style={{
-                            padding: '12px 28px', border: 'none', cursor: 'pointer', fontWeight: 600,
-                            backgroundColor: 'transparent', fontSize: '0.95rem',
-                            color: tab === t ? '#3498db' : '#999',
-                            borderBottom: tab === t ? '3px solid #3498db' : '3px solid transparent',
-                        }}>
-                            {t === 'Approvals' ? `⏳ Team Approvals ${pending.length > 0 ? `(${pending.length})` : ''}` : '📋 My Expense History'}
-                        </button>
-                    ))}
-                </div>
-
-                {/* APPROVALS TAB */}
-                {tab === 'Approvals' && (
-                    <div style={{ backgroundColor: '#fff', borderRadius: '0 0 14px 14px', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid #f5f5f5' }}>
-                            <span style={{ fontWeight: 600, color: '#2c3e50' }}>{pending.length} expense(s) awaiting review</span>
-                            <button onClick={fetchPending} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #ddd', cursor: 'pointer', background: '#fff', color: '#666' }}>↻ Refresh</button>
-                        </div>
-                        {loadingP ? <div style={{ padding: 60, textAlign: 'center', color: '#aaa' }}>Loading...</div> :
-                            pending.length === 0 ? (
-                                <div style={{ padding: 60, textAlign: 'center' }}>
-                                    <div style={{ fontSize: '3rem', marginBottom: 12 }}>🎉</div>
-                                    <h3 style={{ color: '#2c3e50' }}>All caught up!</h3>
-                                    <p style={{ color: '#aaa' }}>No pending expenses.</p>
-                                </div>
-                            ) : (
-                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                    <thead><tr style={{ backgroundColor: '#fafafa' }}>
-                                        {['Employee', 'Merchant', 'Amount', 'Converted', 'Category', 'Date', 'Step', ''].map(h => (
-                                            <th key={h} style={{ padding: '11px 16px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#aaa', textTransform: 'uppercase', borderBottom: '1px solid #f0f2f5' }}>{h}</th>
-                                        ))}
-                                    </tr></thead>
-                                    <tbody>
-                                        {pending.map(exp => {
-                                            const emp = exp.users || {};
-                                            const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || '—';
-                                            return (
-                                                <tr key={exp.id} style={{ borderBottom: '1px solid #f8f9fa' }}
-                                                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fafbff'}
-                                                    onMouseLeave={e => e.currentTarget.style.backgroundColor = '#fff'}>
-                                                    <td style={{ padding: '13px 16px', fontWeight: 600, color: '#2c3e50' }}>{name}</td>
-                                                    <td style={{ padding: '13px 16px', color: '#555' }}>{exp.merchant_name}</td>
-                                                    <td style={{ padding: '13px 16px', color: '#555' }}>{exp.currency} {exp.amount}</td>
-                                                    <td style={{ padding: '13px 16px', color: '#27ae60', fontWeight: 600 }}>{exp.company_currency} {exp.converted_amount}</td>
-                                                    <td style={{ padding: '13px 16px' }}><span style={{ backgroundColor: '#e8f0fe', color: '#3498db', padding: '4px 10px', borderRadius: 20, fontSize: '0.8rem', fontWeight: 600 }}>{exp.category}</span></td>
-                                                    <td style={{ padding: '13px 16px', color: '#aaa', fontSize: '0.85rem' }}>{exp.expense_date}</td>
-                                                    <td style={{ padding: '13px 16px', color: '#999', fontSize: '0.85rem' }}>Step {exp.approval_step || 1}</td>
-                                                    <td style={{ padding: '13px 16px' }}>
-                                                        <button onClick={() => setSelected(exp)} style={{ padding: '6px 14px', borderRadius: 8, backgroundColor: '#3498db', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>Review</button>
-                                                    </td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            )
-                        }
-                    </div>
-                )}
-
-                {/* MY EXPENSES TAB */}
-                {tab === 'My Expenses' && (
-                    <div style={{ backgroundColor: '#fff', borderRadius: '0 0 14px 14px', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
-                        <div style={{ padding: '16px 24px', borderBottom: '1px solid #f5f5f5', fontWeight: 600, color: '#2c3e50' }}>
-                            My Submitted Expenses ({history.length})
-                        </div>
-                        {loadingH ? <div style={{ padding: 60, textAlign: 'center', color: '#aaa' }}>Loading...</div> :
-                            history.length === 0 ? <div style={{ padding: 60, textAlign: 'center', color: '#aaa' }}>No expenses submitted yet.</div> : (
-                                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                    <thead><tr style={{ backgroundColor: '#fafafa' }}>
-                                        {['Date', 'Merchant', 'Amount', 'Category', 'Status'].map(h => (
-                                            <th key={h} style={{ padding: '11px 18px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#aaa', textTransform: 'uppercase', borderBottom: '1px solid #f0f2f5' }}>{h}</th>
-                                        ))}
-                                    </tr></thead>
-                                    <tbody>
-                                        {history.map(exp => {
-                                            const ss = STATUS_COLORS[exp.status] || {};
-                                            return (
-                                                <tr key={exp.id} style={{ borderBottom: '1px solid #f8f9fa' }}
-                                                    onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fafbff'}
-                                                    onMouseLeave={e => e.currentTarget.style.backgroundColor = '#fff'}>
-                                                    <td style={{ padding: '13px 18px', color: '#999', fontSize: '0.88rem' }}>{exp.expense_date}</td>
-                                                    <td style={{ padding: '13px 18px', fontWeight: 600, color: '#2c3e50' }}>{exp.merchant_name}</td>
-                                                    <td style={{ padding: '13px 18px', color: '#555' }}>{exp.currency} {exp.amount}</td>
-                                                    <td style={{ padding: '13px 18px' }}><span style={{ backgroundColor: '#e8f0fe', color: '#3498db', padding: '4px 10px', borderRadius: 20, fontSize: '0.8rem', fontWeight: 600 }}>{exp.category}</span></td>
-                                                    <td style={{ padding: '13px 18px' }}><span style={{ ...ss, padding: '5px 12px', borderRadius: 20, fontWeight: 600, fontSize: '0.8rem' }}>{exp.status}</span></td>
-                                                </tr>
-                                            );
-                                        })}
-                                    </tbody>
-                                </table>
-                            )
-                        }
-                    </div>
-                )}
-            </div>
+      {/* Navbar */}
+      <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 3rem', height: 64, background: T.surface, boxShadow: '0 1px 0 rgba(195,198,214,0.4)', position: 'sticky', top: 0, zIndex: 100 }}>
+        <div>
+          <span style={{ fontWeight: 800, fontSize: '1.15rem', color: T.primary }}>👔 Manager Dashboard</span>
+          <span style={{ marginLeft: 8, fontSize: '0.78rem', color: T.textSub }}>{userData.first_name} {userData.last_name}</span>
         </div>
-    );
+        <div style={{ display: 'flex', gap: 10 }}>
+          <PrimaryBtn onClick={() => navigate('/submit-expense')} style={{ background: 'linear-gradient(135deg,#1b6e2e,#2e7d32)' }}>
+            + Submit My Own Expense
+          </PrimaryBtn>
+          <GhostBtn onClick={() => { localStorage.clear(); navigate('/login'); }}>Logout</GhostBtn>
+        </div>
+      </nav>
+
+      <div style={{ padding: '2.5rem 3rem', maxWidth: 1200, margin: '0 auto' }}>
+        <div style={{ background: T.surface, borderRadius: 12, boxShadow: T.ambShadow, overflow: 'hidden' }}>
+          <TabBar
+            tabs={[`⏳ Team Approvals${pending.length > 0 ? ` (${pending.length})` : ''}`, '📋 My Expense History']}
+            active={tab.startsWith('⏳') ? tab : '📋 My Expense History'}
+            onChange={t => setTab(t.startsWith('⏳') ? '⏳ Team Approvals' : '📋 My Expense History')}
+          />
+
+          {/* ─ Team Approvals ─ */}
+          {tab === '⏳ Team Approvals' && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px' }}>
+                <span style={{ fontWeight: 700 }}>{pending.length} expense(s) awaiting review</span>
+                <GhostBtn onClick={fetchPending}>↻ Refresh</GhostBtn>
+              </div>
+              {loadingP ? (
+                <div style={{ padding: 60, textAlign: 'center', color: T.textSub }}>Loading…</div>
+              ) : pending.length === 0 ? (
+                <div style={{ padding: 60, textAlign: 'center' }}>
+                  <div style={{ fontSize: '3rem', marginBottom: 12 }}>🎉</div>
+                  <h3 style={{ color: T.textMain }}>All caught up!</h3>
+                  <p style={{ color: T.textSub }}>No pending expenses.</p>
+                </div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr>{['Employee', 'Merchant', 'Amount', 'Converted', 'Category', 'Date', 'Step', ''].map(h => <ThField key={h}>{h}</ThField>)}</tr></thead>
+                  <tbody>
+                    {pending.map(exp => {
+                      const emp = exp.users || {};
+                      const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || '—';
+                      return (
+                        <tr key={exp.id} style={{ background: T.surface }}
+                          onMouseEnter={e => e.currentTarget.style.background = T.surfLow}
+                          onMouseLeave={e => e.currentTarget.style.background = T.surface}>
+                          <Td style={{ fontWeight: 600 }}>{name}</Td>
+                          <Td>{exp.merchant_name}</Td>
+                          <Td>{exp.currency} {exp.amount}</Td>
+                          <Td style={{ color: '#2e7d32', fontWeight: 600 }}>{exp.company_currency} {exp.converted_amount}</Td>
+                          <Td><Chip label={exp.category} map={{}} /></Td>
+                          <Td style={{ color: T.textSub, fontSize: '0.82rem' }}>{exp.expense_date}</Td>
+                          <Td style={{ color: T.textSub, fontSize: '0.82rem' }}>Step {exp.approval_step || 1}</Td>
+                          <Td>
+                            <PrimaryBtn onClick={() => setSelected(exp)} style={{ padding: '7px 16px', fontSize: '0.82rem' }}>Review</PrimaryBtn>
+                          </Td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </>
+          )}
+
+          {/* ─ My Expense History ─ */}
+          {tab === '📋 My Expense History' && (
+            <>
+              <div style={{ padding: '16px 24px', fontWeight: 700 }}>My Submitted Expenses ({history.length})</div>
+              {loadingH ? (
+                <div style={{ padding: 60, textAlign: 'center', color: T.textSub }}>Loading…</div>
+              ) : history.length === 0 ? (
+                <div style={{ padding: 60, textAlign: 'center' }}>
+                  <div style={{ fontSize: '3rem', marginBottom: 12 }}>🧾</div>
+                  <p style={{ color: T.textSub }}>No expenses submitted yet.</p>
+                  <PrimaryBtn onClick={() => navigate('/submit-expense')}>+ New Expense</PrimaryBtn>
+                </div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr>{['Date', 'Merchant', 'Amount', 'Category', 'Status'].map(h => <ThField key={h}>{h}</ThField>)}</tr></thead>
+                  <tbody>
+                    {history.map(exp => (
+                      <tr key={exp.id} style={{ background: T.surface }}
+                        onMouseEnter={e => e.currentTarget.style.background = T.surfLow}
+                        onMouseLeave={e => e.currentTarget.style.background = T.surface}>
+                        <Td style={{ color: T.textSub, fontSize: '0.82rem' }}>{exp.expense_date}</Td>
+                        <Td style={{ fontWeight: 600 }}>{exp.merchant_name}</Td>
+                        <Td>{exp.currency} {exp.amount}</Td>
+                        <Td><Chip label={exp.category} map={{}} /></Td>
+                        <Td><Chip label={exp.status} map={STATUS_CHIP} /></Td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }

@@ -2,316 +2,371 @@ import React, { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { useNavigate, Link } from 'react-router-dom';
 
+/* ─── Stitch "Ventura Ledger" design tokens ─── */
+const T = {
+  bg:       '#f7f9fc',
+  surface:  '#ffffff',
+  surfLow:  '#f2f4f7',
+  surfHigh: '#e6e8eb',
+  primary:  '#003d9b',
+  primaryC: '#0052cc',
+  onPrim:   '#ffffff',
+  textMain: '#191c1e',
+  textSub:  '#434654',
+  outline:  '#c3c6d6',
+  error:    '#ba1a1a',
+  errCont:  '#ffdad6',
+  onErr:    '#93000a',
+  tertiary: '#5120a9',
+  tertiaryC:'#693ec2',
+  tertiaryF:'#eaddff',
+  shadow:   '0 12px 32px -4px rgba(25,28,30,0.06)',
+};
+
 const api = axios.create({ baseURL: 'http://localhost:8000' });
 const authH = () => ({ Authorization: `Bearer ${localStorage.getItem('session_token')}` });
 
-const ROLE_COLORS = {
-    Admin:    { bg: '#fce8ff', color: '#7b2d8b' },
-    Manager:  { bg: '#e8f0fe', color: '#1a5cb5' },
-    Employee: { bg: '#e8f5e9', color: '#2e7d32' },
+const ROLE_CHIP = {
+  Admin:    { bg: T.tertiaryF, color: T.tertiary },
+  Manager:  { bg: '#dae2ff',   color: T.primary   },
+  Employee: { bg: '#e8f5e9',   color: '#2e7d32'   },
+};
+const STATUS_CHIP = {
+  Pending:  { bg: '#fff8e1', color: '#f57f17' },
+  Approved: { bg: '#e8f5e9', color: '#2e7d32' },
+  Rejected: { bg: T.errCont, color: T.onErr    },
 };
 
-const STATUS_COLORS = {
-    Pending:  { bg: '#fff8e1', color: '#f57f17' },
-    Approved: { bg: '#e8f5e9', color: '#2e7d32' },
-    Rejected: { bg: '#ffebee', color: '#c62828' },
+/* ─── Shared atoms ─── */
+const Chip = ({ label, map }) => {
+  const s = map[label] || { bg: T.surfHigh, color: T.textSub };
+  return (
+    <span style={{ background: s.bg, color: s.color, padding: '4px 12px', borderRadius: 9999, fontSize: '0.75rem', fontWeight: 700, letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+      {label}
+    </span>
+  );
 };
 
-function Toast({ toast }) {
-    if (!toast) return null;
-    return (
-        <div style={{
-            position: 'fixed', bottom: 24, right: 24, zIndex: 9999,
-            padding: '14px 22px', borderRadius: 10, fontWeight: 600,
-            backgroundColor: toast.type === 'success' ? '#27ae60' : '#e74c3c',
-            color: '#fff', boxShadow: '0 4px 16px rgba(0,0,0,0.18)',
-        }}>{toast.text}</div>
-    );
-}
+const PrimaryBtn = ({ onClick, children, style = {} }) => (
+  <button onClick={onClick} style={{ background: `linear-gradient(135deg,${T.primary},${T.primaryC})`, color: T.onPrim, border: 'none', borderRadius: 8, padding: '9px 18px', fontWeight: 700, fontSize: '0.875rem', cursor: 'pointer', transition: 'box-shadow 0.2s', ...style }}
+    onMouseEnter={e => e.currentTarget.style.boxShadow = T.shadow}
+    onMouseLeave={e => e.currentTarget.style.boxShadow = 'none'}>
+    {children}
+  </button>
+);
 
-function CreateUserModal({ onClose, onCreated, managers }) {
-    const [form, setForm] = useState({ email: '', password: '', first_name: '', last_name: '', role: 'Employee' });
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState('');
+const GhostBtn = ({ onClick, children }) => (
+  <button onClick={onClick} style={{ background: 'transparent', color: T.textSub, border: `1px solid ${T.outline}`, borderRadius: 8, padding: '8px 16px', fontWeight: 600, fontSize: '0.85rem', cursor: 'pointer' }}>
+    {children}
+  </button>
+);
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setLoading(true); setError('');
-        try {
-            await api.post('/api/users/', form, { headers: authH() });
-            onCreated();
-            onClose();
-        } catch (err) {
-            setError(err.response?.data?.detail || 'Failed to create user');
-        } finally { setLoading(false); }
-    };
+const Toast = ({ toast }) => toast ? (
+  <div style={{ position: 'fixed', bottom: 24, right: 24, zIndex: 9999, padding: '14px 22px', borderRadius: 10, fontWeight: 600, background: toast.type === 'success' ? T.primary : T.error, color: '#fff', boxShadow: T.shadow }}>
+    {toast.text}
+  </div>
+) : null;
 
-    return (
-        <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-            <div style={{ backgroundColor: '#fff', borderRadius: 14, padding: '30px', width: '100%', maxWidth: 460, boxShadow: '0 8px 40px rgba(0,0,0,0.18)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 20 }}>
-                    <h3 style={{ margin: 0, color: '#2c3e50' }}>Create New User</h3>
-                    <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: '#999' }}>✕</button>
-                </div>
-                {error && <div style={{ backgroundColor: '#ffebee', color: '#c62828', padding: '10px 14px', borderRadius: 8, marginBottom: 14, fontSize: '0.9rem' }}>{error}</div>}
-                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                        <input placeholder="First Name" value={form.first_name} onChange={e => setForm({ ...form, first_name: e.target.value })} required style={{ padding: '12px', borderRadius: 8, border: '1px solid #ddd' }} />
-                        <input placeholder="Last Name" value={form.last_name} onChange={e => setForm({ ...form, last_name: e.target.value })} required style={{ padding: '12px', borderRadius: 8, border: '1px solid #ddd' }} />
-                    </div>
-                    <input type="email" placeholder="Email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} required style={{ padding: '12px', borderRadius: 8, border: '1px solid #ddd' }} />
-                    <input type="password" placeholder="Password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} required minLength={6} style={{ padding: '12px', borderRadius: 8, border: '1px solid #ddd' }} />
-                    <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })} style={{ padding: '12px', borderRadius: 8, border: '1px solid #ddd', cursor: 'pointer' }}>
-                        <option value="Employee">Employee</option>
-                        <option value="Manager">Manager</option>
-                        <option value="Admin">Admin</option>
-                    </select>
-                    <button type="submit" disabled={loading} style={{ padding: '12px', borderRadius: 8, backgroundColor: '#3498db', color: '#fff', border: 'none', fontWeight: 700, cursor: 'pointer' }}>
-                        {loading ? 'Creating...' : 'Create User'}
-                    </button>
-                </form>
-            </div>
+const ThField = ({ children }) => (
+  <th style={{ padding: '11px 20px', textAlign: 'left', fontSize: '0.7rem', fontWeight: 700, color: T.textSub, textTransform: 'uppercase', letterSpacing: '0.07em', background: T.surfLow }}>
+    {children}
+  </th>
+);
+
+const TdRow = ({ children, style = {} }) => (
+  <tr style={{ ...style }}
+    onMouseEnter={e => e.currentTarget.style.background = T.surfLow}
+    onMouseLeave={e => e.currentTarget.style.background = T.surface}>
+    {children}
+  </tr>
+);
+
+const Td = ({ children, style = {} }) => (
+  <td style={{ padding: '13px 20px', fontSize: '0.875rem', color: T.textMain, verticalAlign: 'middle', ...style }}>
+    {children}
+  </td>
+);
+
+/* ─── Create User Modal ─── */
+function CreateUserModal({ onClose, onCreated }) {
+  const [form, setForm] = useState({ email: '', password: '', first_name: '', last_name: '', role: 'Employee' });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleSubmit = async (e) => {
+    e.preventDefault(); setLoading(true); setError('');
+    try {
+      await api.post('/api/users/', form, { headers: authH() });
+      onCreated(); onClose();
+    } catch (err) { setError(err.response?.data?.detail || 'Failed to create user'); }
+    finally { setLoading(false); }
+  };
+
+  const inp = (pl, k, type = 'text', extra = {}) => (
+    <input type={type} placeholder={pl} value={form[k]} onChange={e => setForm({ ...form, [k]: e.target.value })} required
+      style={{ padding: '12px 14px', borderRadius: 8, border: `1px solid ${T.outline}`, background: T.surfLow, fontSize: '0.875rem', color: T.textMain, outline: 'none', width: '100%', boxSizing: 'border-box' }} {...extra} />
+  );
+
+  return (
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,61,155,0.15)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+      <div style={{ background: T.surface, borderRadius: 16, padding: '32px', width: 460, boxShadow: '0 24px 64px rgba(0,24,72,0.14)' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
+          <h3 style={{ margin: 0, color: T.textMain, fontSize: '1.25rem', fontWeight: 700 }}>Create New User</h3>
+          <button onClick={onClose} style={{ background: 'none', border: 'none', fontSize: '1.4rem', cursor: 'pointer', color: T.textSub }}>✕</button>
         </div>
-    );
+        {error && <div style={{ background: T.errCont, color: T.onErr, padding: '10px 14px', borderRadius: 8, marginBottom: 16, fontSize: '0.875rem', fontWeight: 600 }}>{error}</div>}
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+            {inp('First Name', 'first_name')}
+            {inp('Last Name', 'last_name')}
+          </div>
+          {inp('Email Address', 'email', 'email')}
+          {inp('Password', 'password', 'password', { minLength: 6 })}
+          <select value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}
+            style={{ padding: '12px 14px', borderRadius: 8, border: `1px solid ${T.outline}`, background: T.surfLow, color: T.textMain, fontSize: '0.875rem' }}>
+            <option value="Employee">Employee</option>
+            <option value="Manager">Manager</option>
+            <option value="Admin">Admin</option>
+          </select>
+          <PrimaryBtn style={{ marginTop: 8, padding: '12px' }}>
+            {loading ? 'Creating...' : 'Create User'}
+          </PrimaryBtn>
+        </form>
+      </div>
+    </div>
+  );
 }
 
-const TABS = ['Team', 'Expenses'];
+/* ─── KPI Card ─── */
+const KpiCard = ({ emoji, label, value, borderColor }) => (
+  <div style={{ background: T.surface, borderRadius: 12, padding: '20px 22px', boxShadow: T.shadow, borderLeft: `4px solid ${borderColor}` }}>
+    <div style={{ fontSize: '1.4rem', marginBottom: 6 }}>{emoji}</div>
+    <div style={{ fontSize: '0.68rem', color: T.textSub, textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: 4 }}>{label}</div>
+    <div style={{ fontSize: '2rem', fontWeight: 700, color: borderColor, letterSpacing: '-0.02em' }}>{value}</div>
+  </div>
+);
 
+/* ─── Tab bar ─── */
+const TabBar = ({ tabs, active, onChange }) => (
+  <div style={{ display: 'flex', borderBottom: `2px solid ${T.outline}` }}>
+    {tabs.map(t => (
+      <button key={t} onClick={() => onChange(t)} style={{
+        padding: '12px 28px', border: 'none', cursor: 'pointer', fontWeight: 600, fontFamily: 'Inter, sans-serif',
+        background: 'transparent', fontSize: '0.92rem',
+        color: active === t ? T.primaryC : T.textSub,
+        borderBottom: active === t ? `3px solid ${T.primaryC}` : '3px solid transparent',
+        marginBottom: -2,
+      }}>{t}</button>
+    ))}
+  </div>
+);
+
+/* ══════════════════════════════════════════
+   ADMIN DASHBOARD
+══════════════════════════════════════════ */
 export default function AdminDashboard() {
-    const navigate = useNavigate();
-    const userData = JSON.parse(localStorage.getItem('user_data') || '{}');
+  const navigate = useNavigate();
+  const userData = JSON.parse(localStorage.getItem('user_data') || '{}');
 
-    const [tab, setTab]           = useState('Team');
-    const [users, setUsers]       = useState([]);
-    const [expenses, setExpenses] = useState([]);
-    const [filterStatus, setFilterStatus] = useState('All');
-    const [loadingU, setLoadingU] = useState(true);
-    const [loadingE, setLoadingE] = useState(false);
-    const [updatingId, setUpdatingId] = useState(null);
-    const [toast, setToast]       = useState(null);
-    const [showCreate, setShowCreate] = useState(false);
-    const [pendingCount, setPendingCount] = useState(0);
+  const [tab, setTab]               = useState('👥 User Management');
+  const [users, setUsers]           = useState([]);
+  const [expenses, setExpenses]     = useState([]);
+  const [filterStatus, setFilter]   = useState('All');
+  const [loadingU, setLoadingU]     = useState(true);
+  const [loadingE, setLoadingE]     = useState(false);
+  const [updatingId, setUpdatingId] = useState(null);
+  const [toast, setToast]           = useState(null);
+  const [showCreate, setShowCreate] = useState(false);
+  const [pendingCnt, setPending]    = useState(0);
 
-    const showToast = (text, type = 'success') => { setToast({ text, type }); setTimeout(() => setToast(null), 3000); };
+  const boom = (text, type = 'success') => { setToast({ text, type }); setTimeout(() => setToast(null), 3000); };
 
-    const fetchUsers = useCallback(async () => {
-        setLoadingU(true);
-        try {
-            const r = await api.get('/api/users/', { headers: authH() });
-            setUsers(r.data.data || []);
-        } catch (e) { if (e.response?.status === 401) navigate('/login'); }
-        finally { setLoadingU(false); }
-    }, [navigate]);
+  const fetchUsers = useCallback(async () => {
+    setLoadingU(true);
+    try { const r = await api.get('/api/users/', { headers: authH() }); setUsers(r.data.data || []); }
+    catch (e) { if (e.response?.status === 401) navigate('/login'); }
+    finally { setLoadingU(false); }
+  }, [navigate]);
 
-    const fetchExpenses = useCallback(async () => {
-        setLoadingE(true);
-        try {
-            const r = await api.get('/api/expenses/history', { headers: authH() });
-            setExpenses(r.data.data || []);
-        } catch (_) {}
-        finally { setLoadingE(false); }
-    }, []);
+  const fetchExpenses = useCallback(async () => {
+    setLoadingE(true);
+    try { const r = await api.get('/api/expenses/history', { headers: authH() }); setExpenses(r.data.data || []); }
+    catch (_) {} finally { setLoadingE(false); }
+  }, []);
 
-    const fetchPendingCount = useCallback(async () => {
-        try {
-            const r = await api.get('/api/approvals/pending', { headers: authH() });
-            setPendingCount((r.data.data || []).length);
-        } catch (_) {}
-    }, []);
+  const fetchPending = useCallback(async () => {
+    try { const r = await api.get('/api/approvals/pending', { headers: authH() }); setPending((r.data.data || []).length); }
+    catch (_) {}
+  }, []);
 
-    useEffect(() => { fetchUsers(); fetchPendingCount(); }, [fetchUsers, fetchPendingCount]);
-    useEffect(() => { if (tab === 'Expenses') fetchExpenses(); }, [tab, fetchExpenses]);
+  useEffect(() => { fetchUsers(); fetchPending(); }, [fetchUsers, fetchPending]);
+  useEffect(() => { if (tab === '📊 Global Ledger') fetchExpenses(); }, [tab, fetchExpenses]);
 
-    const handleRoleChange = async (uid, newRole) => {
-        setUpdatingId(uid);
-        try {
-            await api.patch(`/api/users/${uid}/role`, { new_role: newRole }, { headers: authH() });
-            setUsers(p => p.map(u => u.id === uid ? { ...u, role: newRole } : u));
-            showToast(`Role → ${newRole} ✓`);
-        } catch (e) { showToast(e.response?.data?.detail || 'Update failed', 'error'); }
-        finally { setUpdatingId(null); }
-    };
+  const handleRoleChange = async (uid, newRole) => {
+    setUpdatingId(uid);
+    try {
+      await api.patch(`/api/users/${uid}/role`, { new_role: newRole }, { headers: authH() });
+      setUsers(p => p.map(u => u.id === uid ? { ...u, role: newRole } : u));
+      boom(`Role updated → ${newRole} ✓`);
+    } catch (e) { boom(e.response?.data?.detail || 'Update failed', 'error'); }
+    finally { setUpdatingId(null); }
+  };
 
-    const handleManagerChange = async (uid, managerId) => {
-        if (!managerId) return;
-        try {
-            await api.patch(`/api/users/${uid}/assign-manager`, { manager_id: managerId }, { headers: authH() });
-            setUsers(p => p.map(u => u.id === uid ? { ...u, manager_id: managerId } : u));
-            showToast('Manager assigned ✓');
-        } catch (e) { showToast(e.response?.data?.detail || 'Failed', 'error'); }
-    };
+  const handleManagerChange = async (uid, mgr_id) => {
+    if (!mgr_id) return;
+    try {
+      await api.patch(`/api/users/${uid}/assign-manager`, { manager_id: mgr_id }, { headers: authH() });
+      setUsers(p => p.map(u => u.id === uid ? { ...u, manager_id: mgr_id } : u));
+      boom('Manager assigned ✓');
+    } catch (e) { boom(e.response?.data?.detail || 'Failed', 'error'); }
+  };
 
-    const managers = users.filter(u => u.role === 'Manager' || u.role === 'Admin');
-    const filteredExpenses = filterStatus === 'All' ? expenses : expenses.filter(e => e.status === filterStatus);
+  const managers = users.filter(u => u.role === 'Manager' || u.role === 'Admin');
+  const filtered = filterStatus === 'All' ? expenses : expenses.filter(e => e.status === filterStatus);
 
-    return (
-        <div style={{ minHeight: '100vh', backgroundColor: '#f0f2f5', fontFamily: 'Inter, sans-serif' }}>
-            <Toast toast={toast} />
-            {showCreate && <CreateUserModal onClose={() => setShowCreate(false)} onCreated={fetchUsers} managers={managers} />}
+  return (
+    <div style={{ minHeight: '100vh', background: T.bg, fontFamily: 'Inter, sans-serif', color: T.textMain }}>
+      <Toast toast={toast} />
+      {showCreate && <CreateUserModal onClose={() => setShowCreate(false)} onCreated={fetchUsers} />}
 
-            {/* Navbar */}
-            <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '1rem 2rem', backgroundColor: '#fff', boxShadow: '0 2px 10px rgba(0,0,0,0.07)', position: 'sticky', top: 0, zIndex: 100 }}>
-                <div>
-                    <h2 style={{ margin: 0, color: '#2c3e50', fontSize: '1.35rem' }}>⚙️ Admin Workspace</h2>
-                    <span style={{ fontSize: '0.78rem', color: '#aaa' }}>{userData.first_name} {userData.last_name}</span>
-                </div>
-                <div style={{ display: 'flex', gap: 10 }}>
-                    <button onClick={() => navigate('/manager-dashboard')} style={{ padding: '8px 16px', borderRadius: 8, backgroundColor: '#9b59b6', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>
-                        Approvals {pendingCount > 0 && <span style={{ background: '#e74c3c', borderRadius: 20, padding: '1px 6px', marginLeft: 6, fontSize: '0.75rem' }}>{pendingCount}</span>}
-                    </button>
-                    <button onClick={() => navigate('/submit-expense')} style={{ padding: '8px 16px', borderRadius: 8, backgroundColor: '#27ae60', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>+ Expense</button>
-                    <button onClick={() => { localStorage.clear(); navigate('/login'); }} style={{ padding: '8px 16px', borderRadius: 8, backgroundColor: '#e74c3c', color: '#fff', border: 'none', cursor: 'pointer', fontWeight: 600 }}>Logout</button>
-                </div>
-            </nav>
-
-            <div style={{ padding: '2rem', maxWidth: '1150px', margin: '0 auto' }}>
-                {/* KPIs */}
-                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 14, marginBottom: '2rem' }}>
-                    {[
-                        { label: 'Total Members', value: users.length, color: '#3498db', emoji: '👥' },
-                        { label: 'Admins', value: users.filter(u => u.role === 'Admin').length, color: '#7b2d8b', emoji: '🛡️' },
-                        { label: 'Managers', value: users.filter(u => u.role === 'Manager').length, color: '#1a5cb5', emoji: '👔' },
-                        { label: 'Employees', value: users.filter(u => u.role === 'Employee').length, color: '#2e7d32', emoji: '🧑‍💼' },
-                        { label: 'Pending', value: pendingCount, color: '#f39c12', emoji: '⏳' },
-                    ].map(({ label, value, color, emoji }) => (
-                        <div key={label} style={{ backgroundColor: '#fff', borderRadius: 12, padding: '18px 20px', boxShadow: '0 2px 8px rgba(0,0,0,0.05)', borderLeft: `4px solid ${color}` }}>
-                            <div style={{ fontSize: '1.2rem', marginBottom: 4 }}>{emoji}</div>
-                            <div style={{ fontSize: '0.72rem', color: '#999', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{label}</div>
-                            <div style={{ fontSize: '1.8rem', fontWeight: 700, color }}>{value}</div>
-                        </div>
-                    ))}
-                </div>
-
-                {/* Tabs */}
-                <div style={{ display: 'flex', gap: 0, marginBottom: 0, borderBottom: '2px solid #eee' }}>
-                    {TABS.map(t => (
-                        <button key={t} onClick={() => setTab(t)} style={{
-                            padding: '12px 28px', border: 'none', cursor: 'pointer', fontWeight: 600,
-                            backgroundColor: 'transparent', fontSize: '0.95rem',
-                            color: tab === t ? '#3498db' : '#999',
-                            borderBottom: tab === t ? '3px solid #3498db' : '3px solid transparent',
-                        }}>{t === 'Team' ? '👥 Team' : '📊 Global Ledger'}</button>
-                    ))}
-                </div>
-
-                {/* --- TEAM TAB --- */}
-                {tab === 'Team' && (
-                    <div style={{ backgroundColor: '#fff', borderRadius: '0 0 14px 14px', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid #f5f5f5' }}>
-                            <span style={{ fontWeight: 600, color: '#2c3e50' }}>Team Members ({users.length})</span>
-                            <div style={{ display: 'flex', gap: 10 }}>
-                                <button onClick={fetchUsers} style={{ padding: '7px 14px', borderRadius: 8, border: '1px solid #ddd', cursor: 'pointer', color: '#666', background: '#fff' }}>↻ Refresh</button>
-                                <button onClick={() => setShowCreate(true)} style={{ padding: '7px 16px', borderRadius: 8, border: 'none', backgroundColor: '#3498db', color: '#fff', cursor: 'pointer', fontWeight: 600 }}>+ Create User</button>
-                            </div>
-                        </div>
-                        {loadingU ? <div style={{ padding: 60, textAlign: 'center', color: '#aaa' }}>Loading...</div> : (
-                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                <thead>
-                                    <tr style={{ backgroundColor: '#fafafa' }}>
-                                        {['Member', 'Email', 'Reports To', 'Joined', 'Role'].map(h => (
-                                            <th key={h} style={{ padding: '11px 18px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid #f0f2f5' }}>{h}</th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {users.map(u => {
-                                        const rs = ROLE_COLORS[u.role] || {};
-                                        const isMe = u.id === userData.id;
-                                        return (
-                                            <tr key={u.id} style={{ borderBottom: '1px solid #f8f9fa' }}
-                                                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fafbff'}
-                                                onMouseLeave={e => e.currentTarget.style.backgroundColor = '#fff'}>
-                                                <td style={{ padding: '13px 18px' }}>
-                                                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                                        <div style={{ width: 34, height: 34, borderRadius: '50%', backgroundColor: rs.bg, color: rs.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700 }}>
-                                                            {(u.first_name?.[0] || '?').toUpperCase()}
-                                                        </div>
-                                                        <span style={{ fontWeight: 600, color: '#2c3e50' }}>{u.first_name} {u.last_name} {isMe && <span style={{ fontSize: '0.75rem', color: '#aaa' }}>(You)</span>}</span>
-                                                    </div>
-                                                </td>
-                                                <td style={{ padding: '13px 18px', color: '#666', fontSize: '0.88rem' }}>{u.email}</td>
-                                                <td style={{ padding: '13px 18px' }}>
-                                                    {isMe ? <span style={{ color: '#aaa', fontSize: '0.85rem' }}>—</span> : (
-                                                        <select
-                                                            value={u.manager_id || ''}
-                                                            onChange={e => handleManagerChange(u.id, e.target.value)}
-                                                            style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid #ddd', cursor: 'pointer', fontSize: '0.85rem' }}
-                                                        >
-                                                            <option value="">— Unassigned —</option>
-                                                            {managers.filter(m => m.id !== u.id).map(m => (
-                                                                <option key={m.id} value={m.id}>{m.first_name} {m.last_name}</option>
-                                                            ))}
-                                                        </select>
-                                                    )}
-                                                </td>
-                                                <td style={{ padding: '13px 18px', color: '#aaa', fontSize: '0.83rem' }}>{u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
-                                                <td style={{ padding: '13px 18px' }}>
-                                                    {isMe ? (
-                                                        <span style={{ ...rs, padding: '5px 12px', borderRadius: 20, fontWeight: 600, fontSize: '0.8rem' }}>{u.role}</span>
-                                                    ) : (
-                                                        <select value={u.role} onChange={e => handleRoleChange(u.id, e.target.value)} disabled={updatingId === u.id}
-                                                            style={{ padding: '6px 10px', borderRadius: 7, border: `1px solid ${rs.color || '#ddd'}`, backgroundColor: rs.bg, color: rs.color, fontWeight: 600, cursor: 'pointer', fontSize: '0.83rem', opacity: updatingId === u.id ? 0.6 : 1 }}>
-                                                            <option value="Employee">Employee</option>
-                                                            <option value="Manager">Manager</option>
-                                                            <option value="Admin">Admin</option>
-                                                        </select>
-                                                    )}
-                                                </td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        )}
-                    </div>
-                )}
-
-                {/* --- GLOBAL LEDGER TAB --- */}
-                {tab === 'Expenses' && (
-                    <div style={{ backgroundColor: '#fff', borderRadius: '0 0 14px 14px', boxShadow: '0 4px 15px rgba(0,0,0,0.05)', overflow: 'hidden' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px', borderBottom: '1px solid #f5f5f5' }}>
-                            <span style={{ fontWeight: 600, color: '#2c3e50' }}>All Company Expenses ({filteredExpenses.length})</span>
-                            <div style={{ display: 'flex', gap: 8 }}>
-                                {['All', 'Pending', 'Approved', 'Rejected'].map(s => (
-                                    <button key={s} onClick={() => setFilterStatus(s)} style={{ padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.82rem', backgroundColor: filterStatus === s ? '#2c3e50' : '#f0f2f5', color: filterStatus === s ? '#fff' : '#666' }}>{s}</button>
-                                ))}
-                            </div>
-                        </div>
-                        {loadingE ? <div style={{ padding: 60, textAlign: 'center', color: '#aaa' }}>Loading...</div> : filteredExpenses.length === 0 ? (
-                            <div style={{ padding: 60, textAlign: 'center', color: '#aaa' }}>No expenses found.</div>
-                        ) : (
-                            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                                <thead>
-                                    <tr style={{ backgroundColor: '#fafafa' }}>
-                                        {['Employee', 'Merchant', 'Amount', 'Category', 'Date', 'Status'].map(h => (
-                                            <th key={h} style={{ padding: '11px 18px', textAlign: 'left', fontSize: '0.75rem', fontWeight: 700, color: '#aaa', textTransform: 'uppercase', letterSpacing: '0.06em', borderBottom: '1px solid #f0f2f5' }}>{h}</th>
-                                        ))}
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {filteredExpenses.map(exp => {
-                                        const emp = exp.users || {};
-                                        const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || emp.email || '—';
-                                        const ss = STATUS_COLORS[exp.status] || {};
-                                        return (
-                                            <tr key={exp.id} style={{ borderBottom: '1px solid #f8f9fa' }}
-                                                onMouseEnter={e => e.currentTarget.style.backgroundColor = '#fafbff'}
-                                                onMouseLeave={e => e.currentTarget.style.backgroundColor = '#fff'}>
-                                                <td style={{ padding: '13px 18px', fontWeight: 600, color: '#2c3e50' }}>{name}</td>
-                                                <td style={{ padding: '13px 18px', color: '#555' }}>{exp.merchant_name}</td>
-                                                <td style={{ padding: '13px 18px', color: '#555' }}>{exp.currency} {exp.amount}</td>
-                                                <td style={{ padding: '13px 18px' }}><span style={{ backgroundColor: '#e8f0fe', color: '#3498db', padding: '4px 10px', borderRadius: 20, fontSize: '0.8rem', fontWeight: 600 }}>{exp.category}</span></td>
-                                                <td style={{ padding: '13px 18px', color: '#999', fontSize: '0.85rem' }}>{exp.expense_date}</td>
-                                                <td style={{ padding: '13px 18px' }}><span style={{ ...ss, padding: '5px 12px', borderRadius: 20, fontWeight: 600, fontSize: '0.8rem' }}>{exp.status}</span></td>
-                                            </tr>
-                                        );
-                                    })}
-                                </tbody>
-                            </table>
-                        )}
-                    </div>
-                )}
-            </div>
+      {/* Navbar */}
+      <nav style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 3rem', height: 64, background: T.surface, boxShadow: '0 1px 0 rgba(195,198,214,0.4)', position: 'sticky', top: 0, zIndex: 100 }}>
+        <div>
+          <span style={{ fontWeight: 800, fontSize: '1.15rem', color: T.primary }}>⚙️ Admin Workspace</span>
+          <span style={{ marginLeft: 8, fontSize: '0.78rem', color: T.textSub }}>{userData.first_name} {userData.last_name}</span>
         </div>
-    );
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+          <button onClick={() => navigate('/manager-dashboard')} style={{ background: T.surfLow, border: `1px solid ${T.outline}`, color: T.textMain, padding: '7px 14px', borderRadius: 8, cursor: 'pointer', fontWeight: 600, fontSize: '0.85rem' }}>
+            Approvals {pendingCnt > 0 && <span style={{ background: '#e74c3c', color: '#fff', borderRadius: 20, padding: '1px 7px', marginLeft: 5, fontSize: '0.72rem' }}>{pendingCnt}</span>}
+          </button>
+          <PrimaryBtn onClick={() => navigate('/submit-expense')}>+ Expense</PrimaryBtn>
+          <GhostBtn onClick={() => { localStorage.clear(); navigate('/login'); }}>Logout</GhostBtn>
+        </div>
+      </nav>
+
+      <div style={{ padding: '2.5rem 3rem', maxWidth: 1200, margin: '0 auto' }}>
+        {/* KPI Row */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: 16, marginBottom: '2.5rem' }}>
+          <KpiCard emoji="👥" label="Total Members" value={users.length}                                   borderColor={T.primaryC} />
+          <KpiCard emoji="🛡️" label="Admins"         value={users.filter(u=>u.role==='Admin').length}    borderColor={T.tertiary} />
+          <KpiCard emoji="👔" label="Managers"       value={users.filter(u=>u.role==='Manager').length}  borderColor={T.primary}  />
+          <KpiCard emoji="🧑‍💼" label="Employees"     value={users.filter(u=>u.role==='Employee').length} borderColor="#2e7d32"     />
+          <KpiCard emoji="⏳" label="Pending"        value={pendingCnt}                                   borderColor="#f57f17"     />
+        </div>
+
+        {/* Tabs */}
+        <div style={{ background: T.surface, borderRadius: '12px 12px 0 0', boxShadow: T.shadow, overflow: 'hidden' }}>
+          <div style={{ padding: '0 24px' }}>
+            <TabBar tabs={['👥 User Management', '📊 Global Ledger']} active={tab} onChange={setTab} />
+          </div>
+
+          {/* ── User Management Tab ── */}
+          {tab === '👥 User Management' && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px' }}>
+                <span style={{ fontWeight: 700, color: T.textMain }}>Team Members ({users.length})</span>
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <GhostBtn onClick={fetchUsers}>↻ Refresh</GhostBtn>
+                  <PrimaryBtn onClick={() => setShowCreate(true)}>+ Create User</PrimaryBtn>
+                </div>
+              </div>
+              {loadingU ? (
+                <div style={{ padding: 60, textAlign: 'center', color: T.textSub }}>Loading…</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr>{['Member', 'Email', 'Reports To', 'Joined', 'Role'].map(h => <ThField key={h}>{h}</ThField>)}</tr></thead>
+                  <tbody>
+                    {users.map(u => {
+                      const rc = ROLE_CHIP[u.role] || {};
+                      const isMe = u.id === userData.id;
+                      return (
+                        <TdRow key={u.id}>
+                          <Td>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                              <div style={{ width: 36, height: 36, borderRadius: '50%', background: rc.bg, color: rc.color, display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, fontSize: '0.9rem' }}>
+                                {(u.first_name?.[0] || '?').toUpperCase()}
+                              </div>
+                              <span style={{ fontWeight: 600 }}>{u.first_name} {u.last_name} {isMe && <span style={{ color: T.textSub, fontWeight: 400, fontSize: '0.8rem' }}>(you)</span>}</span>
+                            </div>
+                          </Td>
+                          <Td style={{ color: T.textSub }}>{u.email}</Td>
+                          <Td>
+                            {isMe ? <span style={{ color: T.textSub }}>—</span> : (
+                              <select value={u.manager_id || ''} onChange={e => handleManagerChange(u.id, e.target.value)}
+                                style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${T.outline}`, background: T.surfLow, fontSize: '0.83rem', color: T.textMain, cursor: 'pointer' }}>
+                                <option value="">— Unassigned —</option>
+                                {managers.filter(m => m.id !== u.id).map(m => (
+                                  <option key={m.id} value={m.id}>{m.first_name} {m.last_name}</option>
+                                ))}
+                              </select>
+                            )}
+                          </Td>
+                          <Td style={{ color: T.textSub, fontSize: '0.8rem' }}>{u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</Td>
+                          <Td>
+                            {isMe ? (
+                              <Chip label={u.role} map={ROLE_CHIP} />
+                            ) : (
+                              <select value={u.role} onChange={e => handleRoleChange(u.id, e.target.value)} disabled={updatingId === u.id}
+                                style={{ padding: '6px 10px', borderRadius: 8, border: `1px solid ${rc.color || T.outline}`, background: rc.bg, color: rc.color, fontWeight: 700, fontSize: '0.8rem', cursor: 'pointer', opacity: updatingId === u.id ? 0.6 : 1 }}>
+                                <option value="Employee">Employee</option>
+                                <option value="Manager">Manager</option>
+                                <option value="Admin">Admin</option>
+                              </select>
+                            )}
+                          </Td>
+                        </TdRow>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </>
+          )}
+
+          {/* ── Global Ledger Tab ── */}
+          {tab === '📊 Global Ledger' && (
+            <>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 24px' }}>
+                <span style={{ fontWeight: 700, color: T.textMain }}>All Company Expenses ({filtered.length})</span>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {['All', 'Pending', 'Approved', 'Rejected'].map(s => (
+                    <button key={s} onClick={() => setFilter(s)} style={{
+                      padding: '6px 14px', borderRadius: 20, border: 'none', cursor: 'pointer', fontWeight: 600, fontSize: '0.8rem',
+                      background: filterStatus === s ? T.primary : T.surfLow,
+                      color: filterStatus === s ? '#fff' : T.textSub,
+                    }}>{s}</button>
+                  ))}
+                </div>
+              </div>
+              {loadingE ? (
+                <div style={{ padding: 60, textAlign: 'center', color: T.textSub }}>Loading…</div>
+              ) : filtered.length === 0 ? (
+                <div style={{ padding: 60, textAlign: 'center', color: T.textSub }}>No expenses found.</div>
+              ) : (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                  <thead><tr>{['Date', 'Employee', 'Merchant', 'Amount', 'Category', 'Status'].map(h => <ThField key={h}>{h}</ThField>)}</tr></thead>
+                  <tbody>
+                    {filtered.map(exp => {
+                      const emp = exp.users || {};
+                      const name = `${emp.first_name || ''} ${emp.last_name || ''}`.trim() || '—';
+                      return (
+                        <TdRow key={exp.id}>
+                          <Td style={{ color: T.textSub, fontSize: '0.82rem' }}>{exp.expense_date}</Td>
+                          <Td style={{ fontWeight: 600 }}>{name}</Td>
+                          <Td>{exp.merchant_name}</Td>
+                          <Td style={{ fontWeight: 600 }}>{exp.currency} {exp.amount}</Td>
+                          <Td><Chip label={exp.category} map={{}} /></Td>
+                          <Td><Chip label={exp.status} map={STATUS_CHIP} /></Td>
+                        </TdRow>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
 }
