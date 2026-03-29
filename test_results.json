@@ -1,0 +1,14 @@
+{
+  "gemini": {
+    "status": 200,
+    "body": "{\"status\":\"success\",\"data\":\"SUCCESS\"}"
+  },
+  "register": {
+    "status": 400,
+    "body": "{\"detail\":\"{'message': \\\"Could not find the 'first_name' column of 'users' in the schema cache\\\", 'code': 'PGRST204', 'hint': None, 'details': None}\"}"
+  },
+  "login": {
+    "status": 200,
+    "body": "{\"status\":\"success\",\"token\":\"eyJhbGciOiJFUzI1NiIsImtpZCI6ImQyYTI4MWUyLWJkODUtNDk5Yy04NWY4LTBkYzRmZTc4OTY5NyIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJodHRwczovL2p5b3BvZHJpendic2NjYWxvY3NlLnN1cGFiYXNlLmNvL2F1dGgvdjEiLCJzdWIiOiIyYTg1NGEzZC02ODVmLTQ5YWItYmJmMS0wZDRmYTU4YzMwZDciLCJhdWQiOiJhdXRoZW50aWNhdGVkIiwiZXhwIjoxNzc0Nzc2MjEyLCJpYXQiOjE3NzQ3NzI2MTIsImVtYWlsIjoiZmluYWxfYWRtaW5fMTMwOWUxYTJAZXhhbXBsZS5jb20iLCJwaG9uZSI6IiIsImFwcF9tZXRhZGF0YSI6eyJwcm92aWRlciI6ImVtYWlsIiwicHJvdmlkZXJzIjpbImVtYWlsIl19LCJ1c2VyX21ldGFkYXRhIjp7ImVtYWlsIjoiZmluYWxfYWRtaW5fMTMwOWUxYTJAZXhhbXBsZS5jb20iLCJlbWFpbF92ZXJpZmllZCI6dHJ1ZSwicGhvbmVfdmVyaWZpZWQiOmZhbHNlLCJzdWIiOiIyYTg1NGEzZC02ODVmLTQ5YWItYmJmMS0wZDRmYTU4YzMwZDcifSwicm9sZSI6ImF1dGhlbnRpY2F0ZWQiLCJhYWwiOiJhYWwxIiwiYW1yIjpbeyJtZXRob2QiOiJwYXNzd29yZCIsInRpbWVzdGFtcCI6MTc3NDc3MjYxMn1dLCJzZXNzaW9uX2lkIjoiMmI2NzFhZDYtMjM3YS00ZjMxLTk5MTItNDkzYmFiYmVhZWNiIiwiaXNfYW5vbnltb3VzIjpmYWxzZX0.RBXFIXo1oTyTdChYefjpSfJT_UfpGO3bT2P5dpOe39WYdJO00LcDKlPys3LfG7M0lgqaUAleHgc-uD6a8GmV6g\",\"user\":null}"
+  }
+}
