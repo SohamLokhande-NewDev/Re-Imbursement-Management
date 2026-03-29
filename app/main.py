@@ -3,7 +3,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.database import supabase
 from app.core.config import settings
-from app.api.routes import auth
+from app.api.routes import auth, expenses
 
 # Initialize Gemini
 genai.configure(api_key=settings.API_KEY)
@@ -19,6 +19,7 @@ app.add_middleware(
 )
 
 app.include_router(auth.router)
+app.include_router(expenses.router)
 
 @app.get("/api/test-db")
 def test_db_connection():
