@@ -10,7 +10,7 @@ class ExpenseBase(BaseModel):
     expense_date: date
 
 class ExpenseCreate(ExpenseBase):
-    pass
+    is_manager_approver: bool = False
 
 class OCRExtractionResult(ExpenseBase):
     pass

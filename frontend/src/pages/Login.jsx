@@ -5,6 +5,7 @@ import { useNavigate, Link } from 'react-router-dom';
 export default function Login() {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   const handleChange = (e) => {
@@ -13,12 +14,30 @@ export default function Login() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
+    setError(null);
     try {
       const response = await axios.post('http://localhost:8000/api/auth/login', formData);
-      localStorage.setItem('session_token', response.data.token);
-      navigate('/dashboard');
+      const { token, user } = response.data;
+
+      // Persist token and user info
+      localStorage.setItem('session_token', token);
+      localStorage.setItem('user_role', user?.role || 'Employee');
+      localStorage.setItem('user_data', JSON.stringify(user));
+
+      // Role-based redirect
+      const role = user?.role;
+      if (role === 'Admin') {
+        navigate('/admin-dashboard');
+      } else if (role === 'Manager') {
+        navigate('/manager-dashboard');
+      } else {
+        navigate('/employee-dashboard');
+      }
     } catch (err) {
       setError(err.response?.data?.detail || 'Invalid login credentials.');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -30,7 +49,9 @@ export default function Login() {
         <form onSubmit={handleSubmit} className="auth-form">
           <input type="email" name="email" placeholder="Email Address" onChange={handleChange} required />
           <input type="password" name="password" placeholder="Password" onChange={handleChange} required />
-          <button type="submit" className="auth-button">Login</button>
+          <button type="submit" className="auth-button" disabled={loading}>
+            {loading ? 'Logging in...' : 'Login'}
+          </button>
         </form>
         <p className="auth-link">New user? <Link to="/register">Register here</Link></p>
       </div>

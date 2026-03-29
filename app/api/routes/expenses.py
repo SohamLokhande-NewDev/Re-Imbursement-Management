@@ -33,6 +33,16 @@ async def extract_receipt(file: UploadFile = File(...)):
 @router.post("/")
 async def create_expense(expense: ExpenseCreate, user: dict = Depends(get_current_user_details)):
     try:
+        # Determine the initial approver
+        current_approver_id = None
+        if expense.is_manager_approver and user.get("manager_id"):
+            current_approver_id = user["manager_id"]
+        else:
+            # Route to any Manager in the company
+            mgr = supabase.table("users").select("id").eq("company_id", user["company_id"]).eq("role", "Manager").limit(1).execute()
+            if mgr.data:
+                current_approver_id = mgr.data[0]["id"]
+
         payload = {
             "employee_id": user["id"],
             "company_id": user["company_id"],
@@ -42,7 +52,10 @@ async def create_expense(expense: ExpenseCreate, user: dict = Depends(get_curren
             "description": expense.description,
             "merchant_name": expense.merchant_name,
             "expense_date": str(expense.expense_date),
-            "status": "Pending"
+            "status": "Pending",
+            "is_manager_approver": expense.is_manager_approver,
+            "current_approver_id": current_approver_id,
+            "approval_step": 1
         }
         
         response = supabase.table("expenses").insert(payload).execute()

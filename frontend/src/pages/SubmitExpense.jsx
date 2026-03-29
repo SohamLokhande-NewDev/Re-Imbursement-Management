@@ -10,7 +10,8 @@ export default function SubmitExpense() {
         expense_date: '',
         merchant_name: '',
         category: '',
-        description: ''
+        description: '',
+        is_manager_approver: false
     });
 
     const handleFileChange = async (e) => {
@@ -41,7 +42,8 @@ export default function SubmitExpense() {
     };
 
     const handleChange = (e) => {
-        setFormData({ ...formData, [e.target.name]: e.target.value });
+        const val = e.target.type === 'checkbox' ? e.target.checked : e.target.value;
+        setFormData({ ...formData, [e.target.name]: val });
     };
 
     const handleSubmit = async (e) => {
@@ -54,7 +56,7 @@ export default function SubmitExpense() {
                 headers: { Authorization: `Bearer ${token}` }
             });
             setMessage({ type: 'success', text: 'Expense submitted successfully!' });
-            setFormData({ amount: '', currency: 'USD', expense_date: '', merchant_name: '', category: '', description: '' });
+            setFormData({ amount: '', currency: 'USD', expense_date: '', merchant_name: '', category: '', description: '', is_manager_approver: false });
         } catch (err) {
             setMessage({ type: 'error', text: 'Submission failed. Check login state.' });
         } finally {
@@ -94,6 +96,21 @@ export default function SubmitExpense() {
                     <input type="text" name="category" placeholder="Category (e.g. Travel, Meals)" value={formData.category} onChange={handleChange} required />
                     <textarea name="description" placeholder="Short description..." value={formData.description} onChange={handleChange} 
                               style={{ padding: '14px', borderRadius: '6px', border: '1px solid #ddd', minHeight: '80px' }}></textarea>
+                    
+                    {/* Manager Approval Checkbox */}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '12px', backgroundColor: '#f0f7ff', borderRadius: '8px', border: '1px solid #b3d8ff' }}>
+                        <input 
+                            type="checkbox" 
+                            id="is_manager_approver" 
+                            name="is_manager_approver" 
+                            checked={formData.is_manager_approver} 
+                            onChange={handleChange}
+                            style={{ width: '18px', height: '18px', cursor: 'pointer' }}
+                        />
+                        <label htmlFor="is_manager_approver" style={{ cursor: 'pointer', color: '#2c3e50', fontWeight: '500' }}>
+                            Require Direct Manager Approval First
+                        </label>
+                    </div>
                     
                     <button type="submit" className="auth-button" disabled={loading}>
                         {loading ? 'Submitting...' : 'Submit Expense'}
